@@ -22,10 +22,20 @@ const TEMP_DIR = path.join(__dirname, "temp");
 
 // Headless CLI execution has been removed. All interactions are routed through the Bridge panel.
 
+// Get the correct temp directory for the current platform
+function getTempDir(): string {
+  // Use /tmp on macOS/Linux (reliable, accessible by all processes)
+  // Use TEMP/TMP on Windows
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    return '/tmp';
+  }
+  return process.env.TEMP || process.env.TMP || '/tmp';
+}
+
 // Helper function to read results from After Effects temp file
 function readResultsFromTempFile(): string {
   try {
-    const tempFilePath = path.join(process.env.TEMP || process.env.TMP || '', 'ae_mcp_result.json');
+    const tempFilePath = path.join(getTempDir(), 'ae_mcp_result.json');
     
     // Add debugging info
     console.error(`Checking for results at: ${tempFilePath}`);
@@ -64,7 +74,7 @@ function readResultsFromTempFile(): string {
 // Helper to wait for a fresh result produced by a specific command
 async function waitForBridgeResult(expectedCommand?: string, timeoutMs: number = 5000, pollMs: number = 250): Promise<string> {
   const start = Date.now();
-  const resultPath = path.join(process.env.TEMP || process.env.TMP || '', 'ae_mcp_result.json');
+  const resultPath = path.join(getTempDir(), 'ae_mcp_result.json');
   let lastSize = -1;
 
   while (Date.now() - start < timeoutMs) {
@@ -94,7 +104,7 @@ async function waitForBridgeResult(expectedCommand?: string, timeoutMs: number =
 // Helper function to write command to file
 function writeCommandFile(command: string, args: Record<string, any> = {}): void {
   try {
-    const commandFile = path.join(process.env.TEMP || process.env.TMP || '', 'ae_command.json');
+    const commandFile = path.join(getTempDir(), 'ae_command.json');
     const commandData = {
       command,
       args,
@@ -111,7 +121,7 @@ function writeCommandFile(command: string, args: Record<string, any> = {}): void
 // Helper function to clear the results file to avoid stale cache
 function clearResultsFile(): void {
   try {
-    const resultFile = path.join(process.env.TEMP || process.env.TMP || '', 'ae_mcp_result.json');
+    const resultFile = path.join(getTempDir(), 'ae_mcp_result.json');
     
     // Write a placeholder message to indicate the file is being reset
     const resetData = {
@@ -171,7 +181,9 @@ server.tool(
       "applyEffect",
       "applyEffectTemplate",
       "test-animation",
-      "bridgeTestEffects"
+      "bridgeTestEffects",
+      "createDiamondPlot",
+      "createTypewriterEffect"
     ];
     
     if (!allowedScripts.includes(script)) {
@@ -515,7 +527,7 @@ server.tool(
     try {
       // Generate a unique timestamp
       const timestamp = new Date().getTime();
-      const tempFile = path.join(process.env.TEMP || process.env.TMP || '', `ae_test_${timestamp}.jsx`);
+      const tempFile = path.join(getTempDir(), `ae_test_${timestamp}.jsx`);
       
       // Create a direct test script that doesn't rely on command files
       let scriptContent = "";
@@ -533,7 +545,7 @@ server.tool(
             prop.setValueAtTime(time, value);
             
             // Write direct result
-            var resultFile = new File("${path.join(process.env.TEMP || process.env.TMP || '', 'ae_test_result.txt').replace(/\\/g, '\\\\')}");
+            var resultFile = new File("${path.join(getTempDir(), 'ae_test_result.txt').replace(/\\/g, '\\\\')}");
             resultFile.open("w");
             resultFile.write("SUCCESS: Added keyframe at time " + time + " with value " + value);
             resultFile.close();
@@ -541,7 +553,7 @@ server.tool(
             // Visual feedback
             alert("Test successful: Added opacity keyframe at " + time + "s with value " + value + "%");
           } catch (e) {
-            var errorFile = new File("${path.join(process.env.TEMP || process.env.TMP || '', 'ae_test_error.txt').replace(/\\/g, '\\\\')}");
+            var errorFile = new File("${path.join(getTempDir(), 'ae_test_error.txt').replace(/\\/g, '\\\\')}");
             errorFile.open("w");
             errorFile.write("ERROR: " + e.toString());
             errorFile.close();
@@ -562,7 +574,7 @@ server.tool(
             prop.expression = expression;
             
             // Write direct result
-            var resultFile = new File("${path.join(process.env.TEMP || process.env.TMP || '', 'ae_test_result.txt').replace(/\\/g, '\\\\')}");
+            var resultFile = new File("${path.join(getTempDir(), 'ae_test_result.txt').replace(/\\/g, '\\\\')}");
             resultFile.open("w");
             resultFile.write("SUCCESS: Added expression: " + expression);
             resultFile.close();
@@ -570,7 +582,7 @@ server.tool(
             // Visual feedback
             alert("Test successful: Added position expression: " + expression);
           } catch (e) {
-            var errorFile = new File("${path.join(process.env.TEMP || process.env.TMP || '', 'ae_test_error.txt').replace(/\\/g, '\\\\')}");
+            var errorFile = new File("${path.join(getTempDir(), 'ae_test_error.txt').replace(/\\/g, '\\\\')}");
             errorFile.open("w");
             errorFile.write("ERROR: " + e.toString());
             errorFile.close();
@@ -707,6 +719,113 @@ server.tool(
 );
 
 // --- END NEW EFFECTS TOOLS ---
+
+// --- TYPEWRITER EFFECT TOOL ---
+server.tool(
+  "create-typewriter-effect",
+  "Create a typewriter text effect with blinking cursor for Premiere Pro MOGRTs",
+  {
+    compName: z.string().optional().describe("Name of the composition (uses active comp if not specified)"),
+    text: z.string().optional().describe("The text to type (default: 'Hello World')"),
+    position: z.array(z.number()).optional().describe("Position [x, y] of the text (default: [960, 540])"),
+    fontSize: z.number().optional().describe("Font size in pixels (default: 72)"),
+    fontFamily: z.string().optional().describe("Font family name (default: 'Courier New')"),
+    textColor: z.array(z.number()).optional().describe("Text color as [r, g, b] from 0-1 (default: white)"),
+    cursorChar: z.string().optional().describe("Character to use as cursor (default: '|')"),
+    cursorBlinkSpeed: z.number().optional().describe("Cursor blinks per second (default: 2)"),
+    preTypeDelay: z.number().optional().describe("Seconds to wait before typing starts (default: 1)"),
+    typeSpeed: z.number().optional().describe("Characters typed per second (default: 10)"),
+    showDuration: z.number().optional().describe("Seconds to show full text before backspace (default: 2)"),
+    showCursorDuringDisplay: z.boolean().optional().describe("Show blinking cursor while text is displayed (default: true)"),
+    backspaceSpeed: z.number().optional().describe("Characters deleted per second (default: 15)"),
+    postDeleteDelay: z.number().optional().describe("Seconds to show cursor after text is deleted (default: 0.5)"),
+    cursorOffset: z.number().optional().describe("Pixel offset between last character and cursor (default: 5)")
+  },
+  async (params) => {
+    try {
+      clearResultsFile();
+      writeCommandFile("createTypewriterEffect", params);
+      
+      // Wait for After Effects to process
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const result = readResultsFromTempFile();
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: result
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating typewriter effect: ${String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
+
+// --- DIAMOND PLOT TOOL ---
+server.tool(
+  "create-diamond-plot",
+  "Create a diamond/radar chart with controllable metrics for Premiere Pro Essential Graphics",
+  {
+    compName: z.string().optional().describe("Name of the composition (uses active comp if not specified)"),
+    numPoints: z.number().int().min(3).max(12).optional().describe("Number of points/metrics in the diamond (default: 3)"),
+    metricNames: z.array(z.string()).optional().describe("Names for each metric (e.g., ['Speed', 'Power', 'Accuracy'])"),
+    metricValues: z.array(z.number()).optional().describe("Initial values for each metric (0-100, default: 50)"),
+    maxValue: z.number().optional().describe("Maximum value for metrics (default: 100)"),
+    radius: z.number().optional().describe("Radius of the chart in pixels (default: 200)"),
+    centerX: z.number().optional().describe("X position of chart center (default: 960)"),
+    centerY: z.number().optional().describe("Y position of chart center (default: 540)"),
+    fillColor: z.array(z.number()).optional().describe("Fill color as [r, g, b] from 0-1 (default: light blue)"),
+    strokeColor: z.array(z.number()).optional().describe("Stroke color as [r, g, b] from 0-1"),
+    strokeWidth: z.number().optional().describe("Stroke width in pixels (default: 3)"),
+    fillOpacity: z.number().optional().describe("Fill opacity 0-100 (default: 50)"),
+    showLabels: z.boolean().optional().describe("Show metric name labels (default: true)"),
+    showValues: z.boolean().optional().describe("Show metric value numbers (default: true)"),
+    labelFontSize: z.number().optional().describe("Font size for labels (default: 24)"),
+    valueFontSize: z.number().optional().describe("Font size for values (default: 18)")
+  },
+  async (params) => {
+    try {
+      clearResultsFile();
+      writeCommandFile("createDiamondPlot", params);
+      
+      // Wait for After Effects to process
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const result = readResultsFromTempFile();
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: result
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating diamond plot: ${String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
 
 // Add direct MCP function for applying effects
 server.tool(

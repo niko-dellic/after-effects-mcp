@@ -788,6 +788,521 @@ function applyEffectTemplate(args) {
     }
 }
 
+// --- createTypewriterEffect - Creates a typewriter text effect with cursor ---
+function createTypewriterEffect(args) {
+    try {
+        var compName = args.compName || "";
+        var text = args.text || "Hello World";
+        var position = args.position || [960, 540];
+        var fontSize = parseInt(args.fontSize) || 72;
+        var fontFamily = args.fontFamily || "Courier";
+        var textColor = args.textColor || [1, 1, 1];
+        var cursorChar = args.cursorChar || "|";
+        var cursorBlinkSpeed = parseFloat(args.cursorBlinkSpeed) || 2; // blinks per second
+        var preTypeDelay = parseFloat(args.preTypeDelay) || 1; // seconds before typing starts
+        var typeSpeed = parseFloat(args.typeSpeed) || 10; // characters per second
+        var showDuration = parseFloat(args.showDuration) || 2; // seconds to show full text
+        var showCursorDuringDisplay = args.showCursorDuringDisplay !== false; // default true
+        var backspaceSpeed = parseFloat(args.backspaceSpeed) || 15; // characters per second
+        var postDeleteDelay = parseFloat(args.postDeleteDelay) || 0.5; // seconds after delete
+        
+        // Find the composition
+        var comp = null;
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof CompItem && item.name === compName) {
+                comp = item;
+                break;
+            }
+        }
+        if (!comp) {
+            if (app.project.activeItem instanceof CompItem) {
+                comp = app.project.activeItem;
+            } else {
+                throw new Error("No composition found with name '" + compName + "' and no active composition");
+            }
+        }
+        
+        // --- Step 1: Create Controls Null layer ---
+        var controlsNull = comp.layers.addNull();
+        controlsNull.name = "Typewriter Controls";
+        
+        // Add slider controls
+        var blinkSpeedCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        blinkSpeedCtrl.name = "Cursor Blink Speed";
+        blinkSpeedCtrl.property("Slider").setValue(cursorBlinkSpeed);
+        
+        var preDelayCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        preDelayCtrl.name = "Pre-Type Delay";
+        preDelayCtrl.property("Slider").setValue(preTypeDelay);
+        
+        var typeSpeedCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        typeSpeedCtrl.name = "Type Speed";
+        typeSpeedCtrl.property("Slider").setValue(typeSpeed);
+        
+        var showDurCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        showDurCtrl.name = "Show Duration";
+        showDurCtrl.property("Slider").setValue(showDuration);
+        
+        var showCursorCtrl = controlsNull.Effects.addProperty("ADBE Checkbox Control");
+        showCursorCtrl.name = "Show Cursor During Display";
+        showCursorCtrl.property("Checkbox").setValue(showCursorDuringDisplay ? 1 : 0);
+        
+        var backspaceSpeedCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        backspaceSpeedCtrl.name = "Backspace Speed";
+        backspaceSpeedCtrl.property("Slider").setValue(backspaceSpeed);
+        
+        var postDelayCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        postDelayCtrl.name = "Post-Delete Delay";
+        postDelayCtrl.property("Slider").setValue(postDeleteDelay);
+        
+        var cursorOffsetCtrl = controlsNull.Effects.addProperty("ADBE Slider Control");
+        cursorOffsetCtrl.name = "Cursor Offset";
+        cursorOffsetCtrl.property("Slider").setValue(args.cursorOffset || 5);
+        
+        // --- Step 2: Create HIDDEN source text layer (holds the original text) ---
+        var sourceTextLayer = comp.layers.addText(text);
+        sourceTextLayer.name = "Typewriter Source";
+        sourceTextLayer.enabled = false; // Hide it
+        
+        var sourceProp = sourceTextLayer.property("ADBE Text Properties").property("ADBE Text Document");
+        var sourceDoc = sourceProp.value;
+        sourceDoc.fontSize = fontSize;
+        sourceDoc.font = fontFamily;
+        sourceDoc.fillColor = textColor;
+        sourceDoc.justification = ParagraphJustification.LEFT_JUSTIFY;
+        sourceProp.setValue(sourceDoc);
+        
+        sourceTextLayer.property("Position").setValue(position);
+        
+        // --- Step 3: Create the visible text layer (shows partial text) ---
+        var textLayer = comp.layers.addText("");
+        textLayer.name = "Typewriter Text";
+        
+        var textProp = textLayer.property("ADBE Text Properties").property("ADBE Text Document");
+        var textDoc = textProp.value;
+        textDoc.fontSize = fontSize;
+        textDoc.font = fontFamily;
+        textDoc.fillColor = textColor;
+        textDoc.justification = ParagraphJustification.LEFT_JUSTIFY;
+        textProp.setValue(textDoc);
+        
+        textLayer.property("Position").setValue(position);
+        
+        // Build the typewriter expression - reads from source layer
+        var textExpression = '// Typewriter Effect Expression\n';
+        textExpression += 'var ctrl = thisComp.layer("Typewriter Controls");\n';
+        textExpression += 'var srcLayer = thisComp.layer("Typewriter Source");\n';
+        textExpression += 'var fullText = srcLayer.text.sourceText.value.toString();\n';
+        textExpression += 'var preDelay = ctrl.effect("Pre-Type Delay")("Slider");\n';
+        textExpression += 'var typeSpd = ctrl.effect("Type Speed")("Slider");\n';
+        textExpression += 'var showDur = ctrl.effect("Show Duration")("Slider");\n';
+        textExpression += 'var backSpd = ctrl.effect("Backspace Speed")("Slider");\n';
+        textExpression += 'var postDelay = ctrl.effect("Post-Delete Delay")("Slider");\n\n';
+        textExpression += 'var textLen = fullText.length;\n';
+        textExpression += 'var typeDuration = textLen / Math.max(typeSpd, 0.1);\n';
+        textExpression += 'var backspaceDuration = textLen / Math.max(backSpd, 0.1);\n\n';
+        textExpression += '// Timeline phases\n';
+        textExpression += 'var phase1End = preDelay;\n';
+        textExpression += 'var phase2End = phase1End + typeDuration;\n';
+        textExpression += 'var phase3End = phase2End + showDur;\n';
+        textExpression += 'var phase4End = phase3End + backspaceDuration;\n\n';
+        textExpression += 'var t = time;\n';
+        textExpression += 'var charsToShow = 0;\n\n';
+        textExpression += 'if (t < phase1End) {\n';
+        textExpression += '    charsToShow = 0;\n';
+        textExpression += '} else if (t < phase2End) {\n';
+        textExpression += '    var typeProgress = (t - phase1End) / typeDuration;\n';
+        textExpression += '    charsToShow = Math.floor(typeProgress * textLen);\n';
+        textExpression += '} else if (t < phase3End) {\n';
+        textExpression += '    charsToShow = textLen;\n';
+        textExpression += '} else if (t < phase4End) {\n';
+        textExpression += '    var backProgress = (t - phase3End) / backspaceDuration;\n';
+        textExpression += '    charsToShow = Math.floor((1 - backProgress) * textLen);\n';
+        textExpression += '} else {\n';
+        textExpression += '    charsToShow = 0;\n';
+        textExpression += '}\n\n';
+        textExpression += 'fullText.substring(0, Math.max(0, charsToShow));';
+        
+        textLayer.property("Source Text").expression = textExpression;
+        
+        // --- Step 4: Create the cursor layer ---
+        var cursorLayer = comp.layers.addText(cursorChar);
+        cursorLayer.name = "Typewriter Cursor";
+        
+        var cursorProp = cursorLayer.property("ADBE Text Properties").property("ADBE Text Document");
+        var cursorDoc = cursorProp.value;
+        cursorDoc.fontSize = fontSize;
+        cursorDoc.font = fontFamily;
+        cursorDoc.fillColor = textColor;
+        cursorDoc.justification = ParagraphJustification.LEFT_JUSTIFY;
+        cursorProp.setValue(cursorDoc);
+        
+        // Position cursor at base position initially
+        cursorLayer.property("Position").setValue(position);
+        
+        // Position the cursor: smooth during typing/backspace, with offset during full display
+        var cursorPosExpression = '// Cursor with smooth movement and offset during display\n';
+        cursorPosExpression += 'var ctrl = thisComp.layer("Typewriter Controls");\n';
+        cursorPosExpression += 'var srcLayer = thisComp.layer("Typewriter Source");\n';
+        cursorPosExpression += 'var textLayer = thisComp.layer("Typewriter Text");\n';
+        cursorPosExpression += 'var basePos = textLayer.position.value;\n\n';
+        cursorPosExpression += '// Get timing parameters\n';
+        cursorPosExpression += 'var fullText = srcLayer.text.sourceText.value.toString();\n';
+        cursorPosExpression += 'var textLen = fullText.length;\n';
+        cursorPosExpression += 'var preDelay = ctrl.effect("Pre-Type Delay")("Slider");\n';
+        cursorPosExpression += 'var typeSpd = ctrl.effect("Type Speed")("Slider");\n';
+        cursorPosExpression += 'var showDur = ctrl.effect("Show Duration")("Slider");\n';
+        cursorPosExpression += 'var backSpd = ctrl.effect("Backspace Speed")("Slider");\n';
+        cursorPosExpression += 'var cursorOffset = ctrl.effect("Cursor Offset")("Slider");\n\n';
+        cursorPosExpression += 'var typeDuration = textLen / Math.max(typeSpd, 0.1);\n';
+        cursorPosExpression += 'var backspaceDuration = textLen / Math.max(backSpd, 0.1);\n\n';
+        cursorPosExpression += 'var phase1End = preDelay;\n';
+        cursorPosExpression += 'var phase2End = phase1End + typeDuration;\n';
+        cursorPosExpression += 'var phase3End = phase2End + showDur;\n';
+        cursorPosExpression += 'var phase4End = phase3End + backspaceDuration;\n\n';
+        cursorPosExpression += '// Get full text dimensions for smooth interpolation\n';
+        cursorPosExpression += 'var srcRect = srcLayer.sourceRectAtTime(0, false);\n';
+        cursorPosExpression += 'var fullWidth = srcRect ? srcRect.width : 0;\n';
+        cursorPosExpression += 'var xOffset = srcRect ? srcRect.left : 0;\n\n';
+        cursorPosExpression += 'var t = time;\n';
+        cursorPosExpression += 'var cursorX = 0;\n\n';
+        cursorPosExpression += 'if (t < phase1End) {\n';
+        cursorPosExpression += '    // Phase 1: Pre-type - cursor at start\n';
+        cursorPosExpression += '    cursorX = 0;\n';
+        cursorPosExpression += '} else if (t < phase2End) {\n';
+        cursorPosExpression += '    // Phase 2: Typing - smooth linear progress\n';
+        cursorPosExpression += '    var progress = (t - phase1End) / typeDuration;\n';
+        cursorPosExpression += '    cursorX = progress * fullWidth;\n';
+        cursorPosExpression += '} else if (t < phase3End) {\n';
+        cursorPosExpression += '    // Phase 3: Full display - at end with offset\n';
+        cursorPosExpression += '    cursorX = fullWidth + cursorOffset;\n';
+        cursorPosExpression += '} else if (t < phase4End) {\n';
+        cursorPosExpression += '    // Phase 4: Backspacing - smooth linear reverse\n';
+        cursorPosExpression += '    var progress = 1 - ((t - phase3End) / backspaceDuration);\n';
+        cursorPosExpression += '    cursorX = progress * fullWidth;\n';
+        cursorPosExpression += '} else {\n';
+        cursorPosExpression += '    // Phase 5: Post-delete - cursor at start\n';
+        cursorPosExpression += '    cursorX = 0;\n';
+        cursorPosExpression += '}\n\n';
+        cursorPosExpression += '[basePos[0] + xOffset + cursorX, basePos[1]];';
+        
+        cursorLayer.property("Position").expression = cursorPosExpression;
+        
+        // Cursor blink expression (opacity)
+        var cursorBlinkExpression = '// Cursor blink and visibility\n';
+        cursorBlinkExpression += 'var ctrl = thisComp.layer("Typewriter Controls");\n';
+        cursorBlinkExpression += 'var srcLayer = thisComp.layer("Typewriter Source");\n';
+        cursorBlinkExpression += 'var blinkSpeed = ctrl.effect("Cursor Blink Speed")("Slider");\n';
+        cursorBlinkExpression += 'var preDelay = ctrl.effect("Pre-Type Delay")("Slider");\n';
+        cursorBlinkExpression += 'var typeSpd = ctrl.effect("Type Speed")("Slider");\n';
+        cursorBlinkExpression += 'var showDur = ctrl.effect("Show Duration")("Slider");\n';
+        cursorBlinkExpression += 'var backSpd = ctrl.effect("Backspace Speed")("Slider");\n';
+        cursorBlinkExpression += 'var postDelay = ctrl.effect("Post-Delete Delay")("Slider");\n';
+        cursorBlinkExpression += 'var showCursorDuring = ctrl.effect("Show Cursor During Display")("Checkbox");\n\n';
+        cursorBlinkExpression += 'var fullText = srcLayer.text.sourceText.value.toString();\n';
+        cursorBlinkExpression += 'var textLen = fullText.length;\n';
+        cursorBlinkExpression += 'var typeDuration = textLen / Math.max(typeSpd, 0.1);\n';
+        cursorBlinkExpression += 'var backspaceDuration = textLen / Math.max(backSpd, 0.1);\n\n';
+        cursorBlinkExpression += 'var phase1End = preDelay;\n';
+        cursorBlinkExpression += 'var phase2End = phase1End + typeDuration;\n';
+        cursorBlinkExpression += 'var phase3End = phase2End + showDur;\n';
+        cursorBlinkExpression += 'var phase4End = phase3End + backspaceDuration;\n';
+        cursorBlinkExpression += 'var phase5End = phase4End + postDelay;\n\n';
+        cursorBlinkExpression += 'var t = time;\n';
+        cursorBlinkExpression += 'var visible = 0;\n\n';
+        cursorBlinkExpression += 'if (t < phase1End) {\n';
+        cursorBlinkExpression += '    visible = (Math.sin(t * blinkSpeed * Math.PI * 2) > 0) ? 100 : 0;\n';
+        cursorBlinkExpression += '} else if (t < phase2End) {\n';
+        cursorBlinkExpression += '    visible = 100;\n';
+        cursorBlinkExpression += '} else if (t < phase3End) {\n';
+        cursorBlinkExpression += '    // Phase 3: Show duration - check if cursor should be visible\n';
+        cursorBlinkExpression += '    if (showCursorDuring == 1) {\n';
+        cursorBlinkExpression += '        visible = (Math.sin(t * blinkSpeed * Math.PI * 2) > 0) ? 100 : 0;\n';
+        cursorBlinkExpression += '    } else {\n';
+        cursorBlinkExpression += '        visible = 0;\n';
+        cursorBlinkExpression += '    }\n';
+        cursorBlinkExpression += '} else if (t < phase4End) {\n';
+        cursorBlinkExpression += '    visible = 100;\n';
+        cursorBlinkExpression += '} else if (t < phase5End) {\n';
+        cursorBlinkExpression += '    visible = (Math.sin(t * blinkSpeed * Math.PI * 2) > 0) ? 100 : 0;\n';
+        cursorBlinkExpression += '} else {\n';
+        cursorBlinkExpression += '    visible = 0;\n';
+        cursorBlinkExpression += '}\n\n';
+        cursorBlinkExpression += 'visible;';
+        
+        cursorLayer.property("Opacity").expression = cursorBlinkExpression;
+        
+        return JSON.stringify({
+            status: "success",
+            message: "Typewriter effect created successfully",
+            typewriter: {
+                composition: comp.name,
+                text: text,
+                controlsLayer: controlsNull.name,
+                sourceLayer: sourceTextLayer.name,
+                textLayer: textLayer.name,
+                cursorLayer: cursorLayer.name
+            },
+            controls: [
+                "Cursor Blink Speed - blinks per second",
+                "Pre-Type Delay - seconds before typing starts",
+                "Type Speed - characters per second",
+                "Show Duration - seconds to display full text",
+                "Show Cursor During Display - checkbox",
+                "Backspace Speed - characters per second",
+                "Post-Delete Delay - seconds after backspace completes"
+            ],
+            instructions: "To change the text: Edit the 'Typewriter Source' layer's Source Text.\nTo export to Premiere Pro:\n1. Enable 'Typewriter Source' layer visibility temporarily\n2. Drag its Source Text to Essential Graphics for editable text\n3. Drag slider/checkbox controls from 'Typewriter Controls'\n4. Export as Motion Graphics Template"
+        }, null, 2);
+        
+    } catch (error) {
+        return JSON.stringify({ status: "error", message: error.toString() }, null, 2);
+    }
+}
+
+// --- createDiamondPlot - Creates a radar/diamond chart with controllable metrics ---
+function createDiamondPlot(args) {
+    try {
+        var compName = args.compName || "";
+        var numPoints = parseInt(args.numPoints) || 3;
+        var metricNames = args.metricNames || [];
+        var metricValues = args.metricValues || [];
+        var maxValue = parseFloat(args.maxValue) || 100;
+        var radius = parseFloat(args.radius) || 200;
+        var centerX = parseFloat(args.centerX) || 960;
+        var centerY = parseFloat(args.centerY) || 540;
+        var fillColor = args.fillColor || [0.2, 0.6, 1]; // Light blue
+        var strokeColor = args.strokeColor || [0.4, 0.8, 1]; // Lighter blue
+        var strokeWidth = parseFloat(args.strokeWidth) || 3;
+        var fillOpacity = parseFloat(args.fillOpacity) || 50;
+        var showLabels = args.showLabels !== false; // Default true
+        var showValues = args.showValues !== false; // Default true
+        var labelFontSize = parseInt(args.labelFontSize) || 24;
+        var valueFontSize = parseInt(args.valueFontSize) || 18;
+        
+        // Fill in default metric names if not provided
+        for (var i = 0; i < numPoints; i++) {
+            if (!metricNames[i]) {
+                metricNames[i] = "Metric " + (i + 1);
+            }
+            if (metricValues[i] === undefined) {
+                metricValues[i] = 50; // Default 50%
+            }
+        }
+        
+        // Find the composition
+        var comp = null;
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof CompItem && item.name === compName) {
+                comp = item;
+                break;
+            }
+        }
+        if (!comp) {
+            if (app.project.activeItem instanceof CompItem) {
+                comp = app.project.activeItem;
+            } else {
+                throw new Error("No composition found with name '" + compName + "' and no active composition");
+            }
+        }
+        
+        // --- Step 1: Create Controls Null layer with Slider Controls ---
+        var controlsNull = comp.layers.addNull();
+        controlsNull.name = "Diamond Plot Controls";
+        controlsNull.property("Position").setValue([centerX, centerY]);
+        
+        // Add effect controls for each metric
+        var sliderEffects = [];
+        for (var i = 0; i < numPoints; i++) {
+            var sliderEffect = controlsNull.Effects.addProperty("ADBE Slider Control");
+            sliderEffect.name = metricNames[i];
+            sliderEffect.property("Slider").setValue(metricValues[i]);
+            sliderEffects.push(sliderEffect);
+        }
+        
+        // Add a master scale slider
+        var scaleSlider = controlsNull.Effects.addProperty("ADBE Slider Control");
+        scaleSlider.name = "Plot Scale";
+        scaleSlider.property("Slider").setValue(100);
+        
+        // Add a max value slider for reference
+        var maxSlider = controlsNull.Effects.addProperty("ADBE Slider Control");
+        maxSlider.name = "Max Value";
+        maxSlider.property("Slider").setValue(maxValue);
+        
+        // --- Step 2: Create the diamond/radar shape layer ---
+        var shapeLayer = comp.layers.addShape();
+        shapeLayer.name = "Diamond Plot Shape";
+        shapeLayer.moveAfter(controlsNull);
+        
+        var contents = shapeLayer.property("Contents");
+        
+        // Add a path group
+        var pathGroup = contents.addProperty("ADBE Vector Group");
+        pathGroup.name = "Diamond Path";
+        var pathContents = pathGroup.property("Contents");
+        
+        // Add the path
+        var pathProp = pathContents.addProperty("ADBE Vector Shape - Group");
+        
+        // Build the expression for the path
+        // This expression creates a polygon where each vertex distance from center
+        // is determined by the corresponding slider value
+        var pathExpression = 'var ctrl = thisComp.layer("Diamond Plot Controls");\n';
+        pathExpression += 'var numPoints = ' + numPoints + ';\n';
+        pathExpression += 'var maxVal = ctrl.effect("Max Value")("Slider");\n';
+        pathExpression += 'var plotScale = ctrl.effect("Plot Scale")("Slider") / 100;\n';
+        pathExpression += 'var baseRadius = ' + radius + ';\n';
+        pathExpression += 'var centerOffset = [' + centerX + ', ' + centerY + '];\n\n';
+        pathExpression += '// Get metric values\n';
+        pathExpression += 'var values = [];\n';
+        for (var i = 0; i < numPoints; i++) {
+            pathExpression += 'values.push(ctrl.effect("' + metricNames[i] + '")("Slider"));\n';
+        }
+        pathExpression += '\n// Calculate vertices\n';
+        pathExpression += 'var vertices = [];\n';
+        pathExpression += 'var inTangents = [];\n';
+        pathExpression += 'var outTangents = [];\n';
+        pathExpression += 'for (var i = 0; i < numPoints; i++) {\n';
+        pathExpression += '    var angle = (i / numPoints) * Math.PI * 2 - Math.PI / 2; // Start from top\n';
+        pathExpression += '    var normalizedValue = Math.max(0, Math.min(values[i], maxVal)) / maxVal;\n';
+        pathExpression += '    var dist = normalizedValue * baseRadius * plotScale;\n';
+        pathExpression += '    var x = Math.cos(angle) * dist;\n';
+        pathExpression += '    var y = Math.sin(angle) * dist;\n';
+        pathExpression += '    vertices.push([x, y]);\n';
+        pathExpression += '    inTangents.push([0, 0]);\n';
+        pathExpression += '    outTangents.push([0, 0]);\n';
+        pathExpression += '}\n';
+        pathExpression += 'createPath(vertices, inTangents, outTangents, true);';
+        
+        pathProp.property("Path").expression = pathExpression;
+        
+        // Add fill
+        var fill = pathContents.addProperty("ADBE Vector Graphic - Fill");
+        fill.property("Color").setValue(fillColor);
+        fill.property("Opacity").setValue(fillOpacity);
+        
+        // Add stroke
+        var stroke = pathContents.addProperty("ADBE Vector Graphic - Stroke");
+        stroke.property("Color").setValue(strokeColor);
+        stroke.property("Stroke Width").setValue(strokeWidth);
+        stroke.property("Opacity").setValue(100);
+        
+        // Position the shape layer at center
+        shapeLayer.property("Position").setValue([centerX, centerY]);
+        
+        // --- Step 3: Create axis lines (optional background grid) ---
+        var axisLayer = comp.layers.addShape();
+        axisLayer.name = "Diamond Plot Axes";
+        axisLayer.moveAfter(shapeLayer);
+        
+        var axisContents = axisLayer.property("Contents");
+        
+        // Create axis lines from center to each vertex direction
+        for (var i = 0; i < numPoints; i++) {
+            var angle = (i / numPoints) * Math.PI * 2 - Math.PI / 2;
+            var endX = Math.cos(angle) * radius;
+            var endY = Math.sin(angle) * radius;
+            
+            var lineGroup = axisContents.addProperty("ADBE Vector Group");
+            lineGroup.name = "Axis " + (i + 1);
+            var lineContents = lineGroup.property("Contents");
+            
+            var linePath = lineContents.addProperty("ADBE Vector Shape - Group");
+            var lineShape = new Shape();
+            lineShape.vertices = [[0, 0], [endX, endY]];
+            lineShape.closed = false;
+            linePath.property("Path").setValue(lineShape);
+            
+            var lineStroke = lineContents.addProperty("ADBE Vector Graphic - Stroke");
+            lineStroke.property("Color").setValue([0.5, 0.5, 0.5]);
+            lineStroke.property("Stroke Width").setValue(1);
+            lineStroke.property("Opacity").setValue(40);
+        }
+        
+        axisLayer.property("Position").setValue([centerX, centerY]);
+        
+        // --- Step 4: Create labels if enabled ---
+        var labelLayers = [];
+        if (showLabels) {
+            for (var i = 0; i < numPoints; i++) {
+                var angle = (i / numPoints) * Math.PI * 2 - Math.PI / 2;
+                var labelDist = radius + 40; // Place labels outside the chart
+                var labelX = centerX + Math.cos(angle) * labelDist;
+                var labelY = centerY + Math.sin(angle) * labelDist;
+                
+                var textLayer = comp.layers.addText(metricNames[i]);
+                textLayer.name = "Label: " + metricNames[i];
+                
+                var textProp = textLayer.property("ADBE Text Properties").property("ADBE Text Document");
+                var textDoc = textProp.value;
+                textDoc.fontSize = labelFontSize;
+                textDoc.fillColor = [1, 1, 1];
+                textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                textProp.setValue(textDoc);
+                
+                textLayer.property("Position").setValue([labelX, labelY]);
+                textLayer.property("Anchor Point").setValue([0, 0]);
+                
+                labelLayers.push(textLayer);
+            }
+        }
+        
+        // --- Step 5: Create value displays if enabled ---
+        var valueLayers = [];
+        if (showValues) {
+            for (var i = 0; i < numPoints; i++) {
+                var angle = (i / numPoints) * Math.PI * 2 - Math.PI / 2;
+                var valueDist = radius + 70;
+                var valueX = centerX + Math.cos(angle) * valueDist;
+                var valueY = centerY + Math.sin(angle) * valueDist;
+                
+                var valueLayer = comp.layers.addText("0");
+                valueLayer.name = "Value: " + metricNames[i];
+                
+                var valueProp = valueLayer.property("ADBE Text Properties").property("ADBE Text Document");
+                var valueDoc = valueProp.value;
+                valueDoc.fontSize = valueFontSize;
+                valueDoc.fillColor = [0.7, 0.7, 0.7];
+                valueDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                valueProp.setValue(valueDoc);
+                
+                valueLayer.property("Position").setValue([valueX, valueY + 25]);
+                
+                // Add expression to update value text from slider
+                var sourceTextProp = valueLayer.property("Source Text");
+                var valueExpression = 'var ctrl = thisComp.layer("Diamond Plot Controls");\n';
+                valueExpression += 'var val = ctrl.effect("' + metricNames[i] + '")("Slider");\n';
+                valueExpression += 'Math.round(val).toString();';
+                sourceTextProp.expression = valueExpression;
+                
+                valueLayers.push(valueLayer);
+            }
+        }
+        
+        return JSON.stringify({
+            status: "success",
+            message: "Diamond plot created successfully with " + numPoints + " points",
+            diamondPlot: {
+                composition: comp.name,
+                numPoints: numPoints,
+                metrics: metricNames,
+                controlsLayer: controlsNull.name,
+                shapeLayer: shapeLayer.name,
+                axisLayer: axisLayer.name,
+                radius: radius,
+                center: [centerX, centerY]
+            },
+            instructions: "To export to Premiere Pro:\n1. Select the 'Diamond Plot Controls' layer\n2. Open Window > Essential Graphics\n3. Drag the slider effects to the Essential Graphics panel\n4. Click 'Export Motion Graphics Template'\n5. In Premiere Pro, add the .mogrt and adjust sliders in Effect Controls"
+        }, null, 2);
+        
+    } catch (error) {
+        return JSON.stringify({ status: "error", message: error.toString() }, null, 2);
+    }
+}
+
 // --- End of Function Definitions ---
 
 // --- Bridge test function to verify communication and effects application ---
@@ -868,6 +1383,10 @@ if (typeof JSON.stringify !== "function") {
     })();
 }
 
+// Check After Effects version (AE 2025 = version 25.x)
+var aeVersion = parseFloat(app.version);
+var isAE2025OrLater = aeVersion >= 25.0;
+
 // Always create a floating palette window for AE 2025+
 var panel = new Window("palette", "MCP Bridge Auto", undefined);
 panel.orientation = "column";
@@ -900,14 +1419,24 @@ autoRunCheckbox.value = true;
 var checkInterval = 2000;
 var isChecking = false;
 
-// Command file path
+// Command file path - use /tmp on macOS for consistency with Node.js
 function getCommandFilePath() {
+    // Check if we're on macOS ($.os contains "Macintosh" on Mac)
+    if ($.os.indexOf("Macintosh") !== -1 || $.os.indexOf("Mac") !== -1) {
+        return "/tmp/ae_command.json";
+    }
+    // Windows uses Folder.temp
     var tempFolder = Folder.temp;
     return tempFolder.fsName + "/ae_command.json";
 }
 
-// Result file path
+// Result file path - use /tmp on macOS for consistency with Node.js
 function getResultFilePath() {
+    // Check if we're on macOS
+    if ($.os.indexOf("Macintosh") !== -1 || $.os.indexOf("Mac") !== -1) {
+        return "/tmp/ae_mcp_result.json";
+    }
+    // Windows uses Folder.temp
     var tempFolder = Folder.temp;
     return tempFolder.fsName + "/ae_mcp_result.json";
 }
@@ -1108,6 +1637,16 @@ function executeCommand(command, args) {
                 logToPanel("Calling bridgeTestEffects function...");
                 result = bridgeTestEffects(args);
                 logToPanel("Returned from bridgeTestEffects.");
+                break;
+            case "createDiamondPlot":
+                logToPanel("Calling createDiamondPlot function...");
+                result = createDiamondPlot(args);
+                logToPanel("Returned from createDiamondPlot.");
+                break;
+            case "createTypewriterEffect":
+                logToPanel("Calling createTypewriterEffect function...");
+                result = createTypewriterEffect(args);
+                logToPanel("Returned from createTypewriterEffect.");
                 break;
             default:
                 result = JSON.stringify({ error: "Unknown command: " + command });

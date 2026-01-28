@@ -1,6 +1,5 @@
 // install-bridge.js
 // Script to install the After Effects MCP Bridge to the ScriptUI Panels folder
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,14 +8,25 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
+
 // Possible After Effects installation paths (common locations)
-const possiblePaths = [
-  'C:\\Program Files\\Adobe\\Adobe After Effects 2025',
-  'C:\\Program Files\\Adobe\\Adobe After Effects 2024',
-  'C:\\Program Files\\Adobe\\Adobe After Effects 2023',
-  'C:\\Program Files\\Adobe\\Adobe After Effects 2022',
-  'C:\\Program Files\\Adobe\\Adobe After Effects 2021'
-];
+const possiblePaths = isMac
+  ? [
+      '/Applications/Adobe After Effects 2025',
+      '/Applications/Adobe After Effects 2024',
+      '/Applications/Adobe After Effects 2023',
+      '/Applications/Adobe After Effects 2022',
+      '/Applications/Adobe After Effects 2021'
+    ]
+  : [
+      'C:\\Program Files\\Adobe\\Adobe After Effects 2025',
+      'C:\\Program Files\\Adobe\\Adobe After Effects 2024',
+      'C:\\Program Files\\Adobe\\Adobe After Effects 2023',
+      'C:\\Program Files\\Adobe\\Adobe After Effects 2022',
+      'C:\\Program Files\\Adobe\\Adobe After Effects 2021'
+    ];
 
 // Find valid After Effects installation
 let afterEffectsPath = null;
@@ -31,13 +41,22 @@ if (!afterEffectsPath) {
   console.error('Error: Could not find After Effects installation.');
   console.error('Please manually copy the bridge script to your After Effects ScriptUI Panels folder.');
   console.error('Source: build/scripts/mcp-bridge-auto.jsx');
-  console.error('Target: C:\\Program Files\\Adobe\\Adobe After Effects [VERSION]\\Support Files\\Scripts\\ScriptUI Panels\\');
+  if (isMac) {
+    console.error('Target: /Applications/Adobe After Effects [VERSION]/Scripts/ScriptUI Panels/');
+  } else {
+    console.error('Target: C:\\Program Files\\Adobe\\Adobe After Effects [VERSION]\\Support Files\\Scripts\\ScriptUI Panels\\');
+  }
   process.exit(1);
 }
 
 // Define source and destination paths
 const sourceScript = path.join(__dirname, 'build', 'scripts', 'mcp-bridge-auto.jsx');
-const destinationFolder = path.join(afterEffectsPath, 'Support Files', 'Scripts', 'ScriptUI Panels');
+
+// macOS and Windows have different folder structures
+const destinationFolder = isMac
+  ? path.join(afterEffectsPath, 'Scripts', 'ScriptUI Panels')
+  : path.join(afterEffectsPath, 'Support Files', 'Scripts', 'ScriptUI Panels');
+
 const destinationScript = path.join(destinationFolder, 'mcp-bridge-auto.jsx');
 
 // Ensure source script exists
@@ -53,26 +72,29 @@ if (!fs.existsSync(destinationFolder)) {
     fs.mkdirSync(destinationFolder, { recursive: true });
   } catch (error) {
     console.error(`Error creating destination folder: ${error.message}`);
-    console.error('You may need administrative privileges to install the script.');
+    if (isMac) {
+      console.error('You may need to run with sudo: sudo npm run install-bridge');
+    } else {
+      console.error('You may need administrative privileges to install the script.');
+    }
     process.exit(1);
   }
 }
 
-// Copy the script with elevated privileges (for Windows)
+// Copy the script
 try {
   console.log(`Installing bridge script to ${destinationScript}...`);
   
-  // Try to use PowerShell with elevated privileges on Windows
-  const command = `
-    Start-Process PowerShell -Verb RunAs -ArgumentList "-Command Copy-Item -Path '${sourceScript.replace(/\\/g, '\\\\')}' -Destination '${destinationScript.replace(/\\/g, '\\\\')}' -Force"
-  `;
-  
-  execSync(`powershell -Command "${command}"`, { stdio: 'inherit' });
+  fs.copyFileSync(sourceScript, destinationScript);
   
   console.log('Bridge script installed successfully!');
   console.log('\nImportant next steps:');
   console.log('1. Open After Effects');
-  console.log('2. Go to Edit > Preferences > Scripting & Expressions');
+  if (isMac) {
+    console.log('2. Go to After Effects > Settings > Scripting & Expressions');
+  } else {
+    console.log('2. Go to Edit > Preferences > Scripting & Expressions');
+  }
   console.log('3. Enable "Allow Scripts to Write Files and Access Network"');
   console.log('4. Restart After Effects');
   console.log('5. Open the bridge panel: Window > mcp-bridge-auto.jsx');
@@ -81,6 +103,10 @@ try {
   console.error('\nPlease try manual installation:');
   console.error(`1. Copy: ${sourceScript}`);
   console.error(`2. To: ${destinationScript}`);
-  console.error('3. You may need to run as administrator or use File Explorer with admin rights');
+  if (isMac) {
+    console.error('3. You may need to run with sudo or copy manually using Finder');
+  } else {
+    console.error('3. You may need to run as administrator or use File Explorer with admin rights');
+  }
   process.exit(1);
-} 
+}

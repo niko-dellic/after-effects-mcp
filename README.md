@@ -79,6 +79,14 @@
    ```
 
 4. **Install the After Effects panel**
+   
+   **On macOS:**
+   ```bash
+   sudo npm run install-bridge
+   ```
+   (Requires sudo because it copies to `/Applications/Adobe After Effects [VERSION]/Scripts/ScriptUI Panels/`)
+   
+   **On Windows:**
    ```bash
    npm run install-bridge
    # or
@@ -86,16 +94,54 @@
    ```
    This will copy the necessary scripts to your After Effects installation.
 
+### 🍎 macOS-Specific Notes
+
+This project was originally built for Windows. The following changes were made to support macOS:
+
+1. **Build script**: The `package.json` build script uses `cp -r` instead of Windows' `xcopy`:
+   ```json
+   "build": "tsc && cp -r src/scripts build/"
+   ```
+
+2. **Temp file paths**: Both the Node.js MCP server and the ExtendScript bridge use `/tmp` on macOS for command file communication:
+   - Node.js checks `process.platform === 'darwin'` and uses `/tmp`
+   - ExtendScript checks `$.os` for "Macintosh" and uses `/tmp`
+   - On Windows, both use the system's `%TEMP%` folder
+
+3. **After Effects paths**: The install script looks for After Effects at:
+   - macOS: `/Applications/Adobe After Effects [YEAR]/Scripts/ScriptUI Panels/`
+   - Windows: `C:\Program Files\Adobe\Adobe After Effects [YEAR]\Support Files\Scripts\ScriptUI Panels\`
+
+4. **AE 2025 compatibility**: Added version detection for After Effects 2025+ which requires floating palette windows instead of dockable panels.
+
+If the MCP Bridge Auto panel appears empty in After Effects, ensure you've:
+1. Run `npm run build` to compile the latest code
+2. Run `sudo npm run install-bridge` to copy the updated script to After Effects
+3. Restarted After Effects completely
+
 ### 🔧 Update MCP Config
 
-Go to your client (eg. Claude or Cursor ) and update your config file
+Go to your client (eg. Claude or Cursor) and update your config file.
 
+**macOS example:**
 ```json
 {
   "mcpServers": {
     "AfterEffectsMCP": {
       "command": "node",
-      "args": ["C:\\Users\\Dakkshin\\after-effects-mcp\\build\\index.js"]
+      "args": ["/Users/YOUR_USERNAME/path/to/after-effects-mcp/build/index.js"]
+    }
+  }
+}
+```
+
+**Windows example:**
+```json
+{
+  "mcpServers": {
+    "AfterEffectsMCP": {
+      "command": "node",
+      "args": ["C:\\Users\\YOUR_USERNAME\\after-effects-mcp\\build\\index.js"]
     }
   }
 }

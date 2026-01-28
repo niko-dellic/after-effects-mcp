@@ -247,14 +247,49 @@ You can animate layers with:
 
 ## 🛠 Available MCP Tools
 
-| Command                | Description                            |
-| ---------------------- | -------------------------------------- |
-| \`create-composition\` | Create a new comp                      |
-| \`run-script\`         | Run a JS script inside AE              |
-| \`get-results\`        | Get script results                     |
-| \`get-help\`           | Help for available commands            |
-| \`setLayerKeyframe\`   | Add keyframe to layer property         |
-| \`setLayerExpression\` | Add/remove expressions from properties |
+| Command                   | Description                                      |
+| ------------------------- | ------------------------------------------------ |
+| `create-composition`      | Create a new comp                                |
+| `run-script`              | Run a predefined script inside AE                |
+| `get-results`             | Get script results                               |
+| `get-help`                | Help for available commands                      |
+| `setLayerKeyframe`        | Add keyframe to layer property                   |
+| `setLayerExpression`      | Add/remove expressions from properties           |
+| `create-diamond-plot`     | Create a radar/diamond chart for MOGRTs          |
+| `create-typewriter-effect`| Create a typewriter text animation for MOGRTs    |
+| `execute-script`          | Run arbitrary ExtendScript code (see below)      |
+
+### 🔧 Dynamic Script Execution
+
+The `execute-script` tool allows you to run arbitrary ExtendScript code without modifying the bridge:
+
+```javascript
+// Example: Create a composition on the fly
+execute_script({
+  code: `
+    var comp = app.project.items.addComp("Dynamic Comp", 1920, 1080, 1, 10, 30);
+    JSON.stringify({ status: "success", compId: comp.id, compName: comp.name });
+  `
+});
+
+// Example: Get information about selected layers
+execute_script({
+  code: `
+    var comp = app.project.activeItem;
+    var info = [];
+    for (var i = 0; i < comp.selectedLayers.length; i++) {
+      info.push({ name: comp.selectedLayers[i].name, index: comp.selectedLayers[i].index });
+    }
+    JSON.stringify({ selectedLayers: info });
+  `
+});
+```
+
+**Tips for `execute-script`:**
+- Return a JSON string for structured results
+- Use `try/catch` in your code for better error handling
+- Increase `waitTime` parameter for long-running scripts
+- Use this for prototyping, then promote working scripts to dedicated tools
 
 ## 👨‍💻 For Developers
 

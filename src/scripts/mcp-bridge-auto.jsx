@@ -1648,6 +1648,34 @@ function executeCommand(command, args) {
                 result = createTypewriterEffect(args);
                 logToPanel("Returned from createTypewriterEffect.");
                 break;
+            case "executeScript":
+                // Dynamic script execution - runs arbitrary ExtendScript code
+                logToPanel("Executing dynamic script...");
+                try {
+                    var scriptCode = args.code || "";
+                    if (!scriptCode) {
+                        throw new Error("No script code provided");
+                    }
+                    // Execute the script and capture the result
+                    var scriptResult = eval(scriptCode);
+                    // If the result is already a string (JSON), use it directly
+                    // Otherwise, try to stringify it
+                    if (typeof scriptResult === "string") {
+                        result = scriptResult;
+                    } else if (scriptResult === undefined || scriptResult === null) {
+                        result = JSON.stringify({ status: "success", message: "Script executed successfully", result: null });
+                    } else {
+                        result = JSON.stringify({ status: "success", message: "Script executed successfully", result: scriptResult });
+                    }
+                } catch (scriptError) {
+                    result = JSON.stringify({ 
+                        status: "error", 
+                        message: scriptError.toString(),
+                        line: scriptError.line || null
+                    });
+                }
+                logToPanel("Dynamic script execution complete.");
+                break;
             default:
                 result = JSON.stringify({ error: "Unknown command: " + command });
         }

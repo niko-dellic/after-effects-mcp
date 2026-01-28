@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { z } from "zod";
@@ -183,7 +182,8 @@ server.tool(
       "test-animation",
       "bridgeTestEffects",
       "createDiamondPlot",
-      "createTypewriterEffect"
+      "createTypewriterEffect",
+      "executeScript"
     ];
     
     if (!allowedScripts.includes(script)) {
@@ -719,6 +719,47 @@ server.tool(
 );
 
 // --- END NEW EFFECTS TOOLS ---
+
+// --- DYNAMIC SCRIPT EXECUTION TOOL ---
+server.tool(
+  "execute-script",
+  "Execute arbitrary ExtendScript code in After Effects. Use for prototyping or one-off operations.",
+  {
+    code: z.string().describe("ExtendScript code to execute in After Effects. Can be multiple statements. Return a value or JSON string for structured results."),
+    waitTime: z.number().optional().describe("Milliseconds to wait for execution (default: 3000). Increase for long-running scripts.")
+  },
+  async (params) => {
+    try {
+      clearResultsFile();
+      writeCommandFile("executeScript", { code: params.code });
+      
+      // Wait for After Effects to process
+      const waitMs = params.waitTime || 3000;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      
+      const result = readResultsFromTempFile();
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: result
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error executing script: ${String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  }
+);
 
 // --- TYPEWRITER EFFECT TOOL ---
 server.tool(

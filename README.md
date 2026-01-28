@@ -12,6 +12,7 @@
 </a>
 
 ## Table of Contents
+
 - [Features](#features)
   - [Core Composition Features](#core-composition-features)
   - [Layer Management](#layer-management)
@@ -35,23 +36,27 @@
 ## 📦 Features
 
 ### 🎥 Core Composition Features
+
 - **Create compositions** with custom settings (size, frame rate, duration, background color)
 - **List all compositions** in a project
 - **Get project information** such as frame rate, dimensions, and duration
 
 ### 🧱 Layer Management
+
 - **Create text layers** with customizable properties (font, size, color, position)
 - **Create shape layers** (rectangle, ellipse, polygon, star) with colors and strokes
 - **Create solid/adjustment layers** for backgrounds and effects
 - **Modify layer properties** like position, scale, rotation, opacity, and timing
 
 ### 🌀 Animation Capabilities
+
 - **Set keyframes** for layer properties (Position, Scale, Rotation, Opacity, etc.)
 - **Apply expressions** to layer properties for dynamic animations
 
 ## ⚙️ Setup Instructions
 
 ### 🛠 Prerequisites
+
 - Adobe After Effects (2022 or later)
 - Node.js (v14 or later)
 - npm or yarn package manager
@@ -59,12 +64,14 @@
 ### 📥 Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/Dakkshin/after-effects-mcp.git
    cd after-effects-mcp
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    # or
@@ -72,6 +79,7 @@
    ```
 
 3. **Build the project**
+
    ```bash
    npm run build
    # or
@@ -79,19 +87,23 @@
    ```
 
 4. **Install the After Effects panel**
-   
+
    **On macOS:**
+
    ```bash
    sudo npm run install-bridge
    ```
+
    (Requires sudo because it copies to `/Applications/Adobe After Effects [VERSION]/Scripts/ScriptUI Panels/`)
-   
+
    **On Windows:**
+
    ```bash
    npm run install-bridge
    # or
    yarn install-bridge
    ```
+
    This will copy the necessary scripts to your After Effects installation.
 
 ### 🍎 macOS-Specific Notes
@@ -99,22 +111,26 @@
 This project was originally built for Windows. The following changes were made to support macOS:
 
 1. **Build script**: The `package.json` build script uses `cp -r` instead of Windows' `xcopy`:
+
    ```json
    "build": "tsc && cp -r src/scripts build/"
    ```
 
 2. **Temp file paths**: Both the Node.js MCP server and the ExtendScript bridge use `/tmp` on macOS for command file communication:
+
    - Node.js checks `process.platform === 'darwin'` and uses `/tmp`
    - ExtendScript checks `$.os` for "Macintosh" and uses `/tmp`
    - On Windows, both use the system's `%TEMP%` folder
 
 3. **After Effects paths**: The install script looks for After Effects at:
+
    - macOS: `/Applications/Adobe After Effects [YEAR]/Scripts/ScriptUI Panels/`
    - Windows: `C:\Program Files\Adobe\Adobe After Effects [YEAR]\Support Files\Scripts\ScriptUI Panels\`
 
 4. **AE 2025 compatibility**: Added version detection for After Effects 2025+ which requires floating palette windows instead of dockable panels.
 
 If the MCP Bridge Auto panel appears empty in After Effects, ensure you've:
+
 1. Run `npm run build` to compile the latest code
 2. Run `sudo npm run install-bridge` to copy the updated script to After Effects
 3. Restarted After Effects completely
@@ -124,6 +140,7 @@ If the MCP Bridge Auto panel appears empty in After Effects, ensure you've:
 Go to your client (eg. Claude or Cursor) and update your config file.
 
 **macOS example:**
+
 ```json
 {
   "mcpServers": {
@@ -136,6 +153,7 @@ Go to your client (eg. Claude or Cursor) and update your config file.
 ```
 
 **Windows example:**
+
 ```json
 {
   "mcpServers": {
@@ -150,6 +168,7 @@ Go to your client (eg. Claude or Cursor) and update your config file.
 ### ▶️ Running the Server
 
 1. **Start the MCP server**
+
    ```bash
    npm start
    # or
@@ -170,6 +189,7 @@ Once you have the server running and the MCP Bridge panel open in After Effects,
 ### 📘 Creating Compositions
 
 You can create new compositions with custom settings:
+
 - Name
 - Width and height (in pixels)
 - Frame rate
@@ -177,13 +197,14 @@ You can create new compositions with custom settings:
 - Background color
 
 Example MCP tool usage (for developers):
+
 ```javascript
 mcp_aftereffects_create_composition({
-  name: "My Composition", 
-  width: 1920, 
-  height: 1080, 
+  name: "My Composition",
+  width: 1920,
+  height: 1080,
   frameRate: 30,
-  duration: 10
+  duration: 10,
 });
 ```
 
@@ -192,16 +213,19 @@ mcp_aftereffects_create_composition({
 You can create and modify different types of layers:
 
 **Text layers:**
+
 - Set text content, font, size, and color
 - Position text anywhere in the composition
 - Adjust timing and opacity
 
 **Shape layers:**
+
 - Create rectangles, ellipses, polygons, and stars
 - Set fill and stroke colors
 - Customize size and position
 
 **Solid layers:**
+
 - Create background colors
 - Make adjustment layers for effects
 
@@ -210,19 +234,21 @@ You can create and modify different types of layers:
 You can animate layers with:
 
 **Keyframes:**
+
 - Set property values at specific times
 - Create motion, scaling, rotation, and opacity changes
 - Control the timing of animations
 
 **Expressions:**
+
 - Apply JavaScript expressions to properties
 - Create dynamic, procedural animations
 - Connect property values to each other
 
 ## 🛠 Available MCP Tools
 
-| Command              | Description                            |
-|----------------------|----------------------------------------|
+| Command                | Description                            |
+| ---------------------- | -------------------------------------- |
 | \`create-composition\` | Create a new comp                      |
 | \`run-script\`         | Run a JS script inside AE              |
 | \`get-results\`        | Get script results                     |
@@ -249,10 +275,6 @@ yarn build
 ### 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Dakkshin/after-effects-mcp&type=date&legend=top-left)](https://www.star-history.com/#Dakkshin/after-effects-mcp&type=date&legend=top-left)
 
 ## License
 
